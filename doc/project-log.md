@@ -443,7 +443,7 @@ password: 1234567890123
 localhost:3000/authentication/sign-up
 
 body raw json
-username: dsa
+username: asd
 password: 1234567890123
 
 201
@@ -454,7 +454,7 @@ password: 1234567890123
 localhost:3000/authentication/sign-up
 
 body raw json
-username: dsa
+username: asd
 password: 1234567890123
 
 {
@@ -468,7 +468,7 @@ password: 1234567890123
  localhost:3000/authentication/sign-in
 
 body raw json
-username: dsa
+username: asd
 password: 1234567890123
 
 true
@@ -479,7 +479,7 @@ true
  localhost:3000/authentication/sign-in
 
 body raw json
-username: dsa
+username: asd
 password: 1234567890123dsadsadsa
 
 {
@@ -487,4 +487,185 @@ password: 1234567890123dsadsadsa
 	"error": "Unauthorized",
 	"statusCode": 401
 }
+
+btw real cred i used was
+{
+    "username": "asd",
+    "password": "123123123123"
+}
+```
+
+```bash
+npm i @nestjs/jwt @nestjs/config
+```
+
+```
+// use generator to make the super long str (https://jwtsecret.com/generate)
+JWT_SECRET=supersecretkeythatnobodycanguess
+// this is the be domain
+JWT_TOKEN_AUDIENCE=localhost:3000
+// this is the be domein
+JWT_TOKEN_ISSUER=localhost:3000
+// this is the token lifespan
+JWT_ACCESS_TOKEN_TTL=3600
+```
+
+```javascript
+ConfigModule.forRoot({
+  load: [appConfig],
+  validationSchema: Joi.object({
+    NODE_ENV: Joi.string()
+      .valid('development', 'production', 'test', 'staging')
+      .default('development'),
+    DATABASE_HOST: Joi.string().hostname().required(),
+    DATABASE_PORT: Joi.number().port().required(),
+    DATABASE_USER: Joi.string().required(),
+    DATABASE_PASSWORD: Joi.string().required(),
+    DATABASE_NAME: Joi.string().required(),
+
+    // New JWT-related environment variables
+    JWT_SECRET: Joi.string().required(),
+    JWT_TOKEN_AUDIENCE: Joi.string().uri().required(),
+    JWT_TOKEN_ISSUER: Joi.string().uri().required(),
+    JWT_ACCESS_TOKEN_TTL: Joi.number().integer().positive().default(3600),
+  }),
+}),
+```
+
+```javascript
+// grab some from env dump for this config module custom config file
+import { registerAs } from '@nestjs/config';
+
+export default registerAs('jwt', () => {
+  return {
+    secret: process.env.JWT_SECRET,
+    audience: process.env.JWT_TOKEN_AUDIENCE,
+    issuer: process.env.JWT_TOKEN_ISSUER,
+    accessTokenTtl: parseInt(process.env.JWT_ACCESS_TOKEN_TTL ?? '3600', 10),
+  };
+});
+```
+
+```javascript
+// need to register this to a module, just like in typeorm connection data
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule.forFeature(appConfig)],
+      useFactory: (configuration: ConfigType<typeof appConfig>) => ({
+        type: 'postgres',
+        host: configuration.database.host,
+        port: configuration.database.port,
+        username: configuration.database.username,
+        password: configuration.database.password,
+        database: configuration.database.name,
+        autoLoadEntities: true,
+        synchronize: true,
+      }),
+      inject: [appConfig.KEY],
+    }),
+
+    // but this time we need to configure jwt, cuz both are 3rd party module init
+    // we init this not in root app module, since not all needs this thing, only the iam module
+    JwtModule.registerAsync({
+      imports: [ConfigModule.forFeature(jwtConfig)],
+      useFactory: (configuration: ConfigType<typeof jwtConfig>) => configuration,
+      // @Inject(databaseConfig.KEY)
+      inject: [jwtConfig.KEY],
+    }),
+
+    // or
+
+    import databaseConfig from './config/database.config';
+
+  @Module({
+    imports: [
+      JwtModule.registerAsync(jwtConfig.asProvider()),
+    ],
+  })
+
+  // this
+  jwtConfig.asProvider()
+
+  // evaluates to this
+  {
+      imports: [ConfigModule.forFeature(jwtConfig)],
+      useFactory: (configuration: ConfigType<typeof jwtConfig>) => configuration,
+      // @Inject(databaseConfig.KEY)
+      inject: [jwtConfig.KEY],
+    }
+```
+
+so basically, init the 3rd party jwt module in iam module, and register the custom jwt config in iam parent module
+
+```javascript
+
+    JwtModule.registerAsync(jwtConfig.asProvider()),
+    ConfigModule.forFeature(jwtConfig),
+```
+
+```javascript
+// work on the auth service in iam domain to use the jwt service 3rd parth
+// also inject the whole custom config file in here as instance, we can do that since we alr register the custom config in the parent module
+    private readonly jwtService: JwtService,
+    @Inject(jwtConfig.KEY)
+    private readonly jwtConfiguration: ConfigType<typeof jwtConfig>,
+```
+
+```javascript
+// update to generate token and return it
+const accessToken = await this.jwtService.signAsync(
+  {
+    sub: user.id,
+    username: user.username,
+  },
+  {
+    audience: this.jwtConfiguration.audience,
+    issuer: this.jwtConfiguration.issuer,
+    secret: this.jwtConfiguration.secret,
+    expiresIn: this.jwtConfiguration.accessTokenTtl,
+  },
+);
+return {
+  accessToken,
+};
+```
+
+```
+// test with insomnia
+
+// login with legal creds
+// should get access token
+// sign in endpoint is complete
+
+// post
+// localhost:3000/authentication/sign-in
+
+// raw json
+{
+    "username": "asd",
+    "password": "123123123123"
+}
+
+res
+{
+	"accessToken": "asdsda"
+}
+```
+
+```javascript
+// use platform res to get hold of cookies and set access token
+// that way you should see token in cookies instead
+// but i use json only, no need to do this, hard to use later when u use phone client or something
+  @HttpCode(HttpStatus.OK)
+  @Post('sign-in')
+  async signIn(
+    @Res({ passthrough: true }) response: Response,
+    @Body() signInDto: SignInDto,
+  ) {
+    const accessToken = await this.authService.signIn(signInDto);
+    response.cookie('accessToken', accessToken, {
+      secure: true,
+      httpOnly: true,
+      sameSite: true,
+    });
+  }
 ```

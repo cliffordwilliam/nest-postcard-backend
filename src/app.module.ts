@@ -4,11 +4,11 @@ import { ConfigModule, ConfigType } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { CommonModule } from './common/common.module';
 import appConfig from './config/app.config';
+import { IamModule } from './iam/iam.module';
 import { PostcardsModule } from './postcards/postcards.module';
 import { UsersModule } from './users/users.module';
-import { IamModule } from './iam/iam.module';
-import { CommonModule } from './common/common.module';
 
 @Module({
   imports: [
@@ -23,6 +23,10 @@ import { CommonModule } from './common/common.module';
         DATABASE_USER: Joi.string().required(),
         DATABASE_PASSWORD: Joi.string().required(),
         DATABASE_NAME: Joi.string().required(),
+        JWT_SECRET: Joi.string().required(),
+        JWT_TOKEN_AUDIENCE: Joi.string().uri().required(),
+        JWT_TOKEN_ISSUER: Joi.string().uri().required(),
+        JWT_ACCESS_TOKEN_TTL: Joi.number().integer().positive().default(3600),
       }),
     }),
     TypeOrmModule.forRootAsync({
