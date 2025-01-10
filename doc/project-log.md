@@ -927,4 +927,63 @@ body json raw
 }
 ```
 
-// TODO: strong type decoded token in res obj
+```javascript
+// create dir interfaces in iam
+// inside make new file called "active-user-data.interface.ts"
+export interface ActiveUserData {
+  /**
+   * The "subject" of the token. The value of this property is the user ID
+   * that granted this token.
+   */
+  sub: number;
+
+  /**
+   * The subject's (user) username.
+   */
+  username: string;
+}
+
+```
+
+```javascript
+// create dir decorators in iam
+// inside make new file called "active-user.decorator.ts"
+
+// this is to decor param, so we can get the decoded token from req
+// use the interface here for strong typing
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { REQUEST_USER_KEY } from '../iam.constants';
+import { ActiveUserData } from '../interfaces/active-user-data.interface';
+
+export const ActiveUser = createParamDecorator(
+  (field: keyof ActiveUserData | undefined, ctx: ExecutionContext) => {
+    const request = ctx.switchToHttp().getRequest();
+    const user: ActiveUserData | undefined = request[REQUEST_USER_KEY];
+    return field ? user?.[field] : user;
+  },
+);
+
+
+```
+
+```javascript
+// when u put decoded token in req, assign this type u made to it
+// iam service, sign in method
+
+signAsync(
+  {
+    sub: dsdsa,
+    username: asddsa
+  } as ActiveUserData
+)
+```
+
+```javascript
+// try this new decor in find all or something
+
+  @Get()
+  findAll(@ActiveUser() user: ActiveUserData) {
+    console.log(user);
+    return this.postcardsService.findAll();
+  }
+```
