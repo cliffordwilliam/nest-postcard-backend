@@ -12,6 +12,7 @@ import { User } from '../../users/entities/user.entity';
 import jwtConfig from '../config/jwt.config';
 import { HashingService } from '../hashing/hashing.service';
 import { ActiveUserData } from '../interfaces/active-user-data.interface';
+import { pgUniqueViolationErrorCode } from './auth.constants';
 import { SignInDto } from './dto/sign-in.dto';
 import { SignUpDto } from './dto/sign-up.dto';
 
@@ -33,7 +34,6 @@ export class AuthenticationService {
 
       await this.usersRepository.save(user);
     } catch (err) {
-      const pgUniqueViolationErrorCode = '23505'; // save this in dedicated const, to be use else where
       if (err.code === pgUniqueViolationErrorCode) {
         throw new ConflictException();
       }

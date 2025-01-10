@@ -987,3 +987,26 @@ signAsync(
     return this.postcardsService.findAll();
   }
 ```
+
+```javascript
+// move the auth serv err string to a const
+// auth.constants.ts
+export const pgUniqueViolationErrorCode = '23505';
+
+// then use it in serv
+// authentication.service.ts
+  async signUp(signUpDto: SignUpDto) {
+    try {
+      const user = new User();
+      user.username = signUpDto.username;
+      user.password = await this.hashingService.hash(signUpDto.password);
+
+      await this.usersRepository.save(user);
+    } catch (err) {
+      if (err.code === pgUniqueViolationErrorCode) {
+        throw new ConflictException();
+      }
+      throw err;
+    }
+  }
+```
