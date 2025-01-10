@@ -669,3 +669,120 @@ res
     });
   }
 ```
+
+```bash
+// make guard
+nest g guard iam/authentication/guards/access-token --flat
+```
+
+```javascript
+// work on guard
+
+// 📝 access-token.guard.ts
+import {
+  CanActivate,
+  ExecutionContext,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ConfigType } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { Observable } from 'rxjs';
+import jwtConfig from '../../config/jwt.config';
+import { Request } from 'express';
+import { REQUEST_USER_KEY } from '../../iam.constants';
+
+@Injectable()
+export class AccessTokenGuard implements CanActivate {
+  constructor(
+    private readonly jwtService: JwtService,
+    @Inject(jwtConfig.KEY)
+    private readonly jwtConfiguration: ConfigType<typeof jwtConfig>,
+  ) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    // 💡 NOTE: For GraphQL applications, you’d have to use the
+    // wrapper GqlExecutionContext here instead.
+    const request = context.switchToHttp().getRequest();
+    const token = this.extractTokenFromHeader(request);
+    if (!token) {
+      throw new UnauthorizedException();
+    }
+    try {
+      const payload = await this.jwtService.verifyAsync(
+        token,
+        this.jwtConfiguration,
+      );
+      request[REQUEST_USER_KEY] = payload;
+      console.log(payload);
+    } catch {
+      throw new UnauthorizedException();
+    }
+    return true;
+  }
+
+  private extractTokenFromHeader(request: Request): string | undefined {
+    const [_, token] = request.headers.authorization?.split(' ') ?? [];
+    return token;
+  }
+}
+```
+
+```javascript
+// store in const
+// iam.constants.ts
+export const REQUEST_USER_KEY = 'user';
+```
+
+```
+// get token
+
+// post
+// localhost:3000/authentication/sign-in
+
+body json raw
+{
+    "username": "asd",
+    "password": "123123123123"
+}
+
+
+```
+
+```javascript
+// register guard globally to parent module, in providers
+{
+  provide: APP_GUARD,
+  useClass: AccessTokenGuard,
+},
+```
+
+```
+// get coffee
+// now everythin is protected with this guard
+
+// get
+// localhost:3000/postcards
+
+{
+	"message": "Unauthorized",
+	"statusCode": 401
+}
+
+// try again
+// go to auth
+// set type to Bearer Token
+// set Token val with the one u get just now
+
+should work
+
+{
+  sub: 1,
+  username: 'asd',
+  iat: 1736530527,
+  exp: 1736534127,
+  aud: 'localhost:3000',
+  iss: 'localhost:3000'
+}
+```
