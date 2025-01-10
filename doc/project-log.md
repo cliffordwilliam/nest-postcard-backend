@@ -786,3 +786,145 @@ should work
   iss: 'localhost:3000'
 }
 ```
+
+```javascript
+// new enums dir in iam dir, put auth-type.enum.ts in it
+// none means no guard for that resource
+export enum AuthType {
+  Bearer,
+  None,
+}
+```
+
+```javascript
+// new decorators dir in iam dir, put auth.decorator.ts in it
+// set key to the decor, for others to get the val
+// val here takes type of that enum, so can only be 2 possible val
+
+import { SetMetadata } from '@nestjs/common';
+import { AuthType } from '../enums/auth-type.enum';
+
+export const AUTH_TYPE_KEY = 'authType';
+
+export const Auth = (...authTypes: AuthType[]) =>
+  SetMetadata(AUTH_TYPE_KEY, authTypes);
+```
+
+```bash
+// create new guard in iam authentication.guard.ts
+
+nest g guard iam/authentication/guards/authentication --flat
+```
+
+```javascript
+// work on auth guard
+// need 2 dep
+// reflector - grabs decor val with key
+// token guard
+
+// need 2 prop
+// 1 is default auth type
+// the other returns either token guard, or just can activate true (empty guard) for no guard
+
+// now in can activate method
+// first grab decor with val with key and also in class and handler scope (get decor val enum by its key)
+// if there is no decor, then evaluate to default val, bearer -> protect enum
+
+// now that we have enum
+// use it as key to grab the value: can activate method
+// call it, see if it:
+// throw?
+// return true?
+
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { AUTH_TYPE_KEY } from '../decorators/auth.decorator';
+import { AuthType } from '../enums/auth-type.enum';
+import { AccessTokenGuard } from './access-token.guard';
+
+@Injectable()
+export class AuthenticationGuard implements CanActivate {
+  private static readonly defaultAuthType = AuthType.Bearer;
+  private readonly authTypeGuardMap: Record<
+    AuthType,
+    CanActivate | CanActivate[]
+  > = {
+    [AuthType.Bearer]: this.accessTokenGuard,
+    [AuthType.None]: { canActivate: () => true },
+  };
+
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly accessTokenGuard: AccessTokenGuard,
+  ) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const authTypes = this.reflector.getAllAndOverride<AuthType[]>(
+      AUTH_TYPE_KEY,
+      [context.getHandler(), context.getClass()],
+    ) ?? [AuthenticationGuard.defaultAuthType];
+    const guards = authTypes.map((type) => this.authTypeGuardMap[type]).flat();
+    let error = new UnauthorizedException();
+
+    for (const instance of guards) {
+      const canActivate = await Promise.resolve(
+        instance.canActivate(context),
+      ).catch((err) => {
+        error = err;
+      });
+
+      if (canActivate) {
+        return true;
+      }
+    }
+    throw error;
+  }
+}
+
+```
+
+```javascript
+// replace global token guard with this new auth guard
+// make sure to register token guard to be iam provider so that the auth guard can use it
+  providers: [
+    {
+      provide: HashingService,
+      useClass: BcryptService,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: AuthenticationGuard,
+    },
+    AccessTokenGuard,
+    AuthenticationService,
+  ],
+```
+
+```javascript
+// decor the auth controller with auth decor NONE, so that its free to use (sign in up)
+@Auth(AuthType.None)
+@Controller('authentication')
+```
+
+```
+// try client with no token to sign in and up
+// test sign in
+
+// get token
+
+// post
+// localhost:3000/authentication/sign-in
+
+body json raw
+{
+    "username": "asd",
+    "password": "123123123123"
+}
+```
+
+// TODO: strong type decoded token in res obj
