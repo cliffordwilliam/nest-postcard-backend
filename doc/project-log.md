@@ -1010,3 +1010,153 @@ export const pgUniqueViolationErrorCode = '23505';
     }
   }
 ```
+
+```javascript
+// create enums dir in user
+// create role.enum.ts in that dir
+export enum Role {
+  Regular = 'regular',
+  Admin = 'admin',
+}
+```
+
+```javascript
+// update user entity
+// add new role col
+@Column({ enum: Role, default: Role.Regular })
+role: Role;
+```
+
+when u add new role like this and sync on, the col is filled with default alr
+
+```
+postcard_ecommerce_db=# SELECT * FROM "user";
+;
+ id | username |                           password                           |  role
+----+----------+--------------------------------------------------------------+---------
+  1 | asd      | $2b$10$BrEza8FjzUR5fij46B/Ap.LWwnxcg/9UEVbPB/sKzdXUImWW/ngKe | regular
+```
+
+```javascript
+// create a auth dir in iam dir, in it make decorators dir, then inside make roles.decorator.ts
+// role.decorator.ts
+
+// this deco key is roles, val is the roles enums
+import { SetMetadata } from '@nestjs/common';
+import { Role } from '../../../users/enums/role.enum';
+
+export const ROLES_KEY = 'roles';
+export const Roles = (...roles: Role[]) => SetMetadata(ROLES_KEY, roles);
+```
+
+```bash
+// create new guard
+nest g guard iam/authorization/guards/roles  --flat
+```
+
+```javascript
+// update the encoded token interface to include role
+import { Role } from 'src/users/enums/role.enum';
+
+export interface ActiveUserData {
+  /**
+   * The "subject" of the token. The value of this property is the user ID
+   * that granted this token.
+   */
+  sub: number;
+
+  /**
+   * The subject's (user) username.
+   */
+  username: string;
+
+  /**
+   * The subject's (user) role.
+   */
+  role: Role;
+}
+
+```
+
+```javascript
+// update the token decode logic to include the role in it
+// in the iam service
+    const accessToken = await this.jwtService.signAsync(
+      {
+        sub: user.id,
+        username: user.username,
+        role: user.role,
+      } as ActiveUserData,
+      {
+        audience: this.jwtConfiguration.audience,
+        issuer: this.jwtConfiguration.issuer,
+        secret: this.jwtConfiguration.secret,
+        expiresIn: this.jwtConfiguration.accessTokenTtl,
+      },
+    );
+    return {
+      accessToken,
+    };
+```
+
+```javascript
+// register guard globally to parent iam module
+{
+  provide: APP_GUARD,
+  useClass: RolesGuard,
+},
+```
+
+```javascript
+// decor some things to set it for reg or admin roles
+// here only admin can create update and delete postcards
+@Roles(Role.Admin)
+```
+
+```
+// test in client
+
+sign in first
+
+// post
+// localhost:3000/authentication/sign-in
+// raw json body
+
+{
+    "username": "asd",
+    "password": "123123123123"
+}
+
+test create
+POST postcards
+
+// post
+// localhost:3000/postcards
+
+{
+	"message": "Forbidden resource",
+	"error": "Forbidden",
+	"statusCode": 403
+}
+```
+
+```
+// update role to admin via psql
+
+UPDATE "user"
+SET role = 'admin'
+WHERE id = 1;
+
+// ensure that it changed
+postcard_ecommerce_db=# SELECT * FROM "user";
+;
+ id | username |                           password                           | role
+----+----------+--------------------------------------------------------------+-------
+  1 | asd      | $2b$10$BrEza8FjzUR5fij46B/Ap.LWwnxcg/9UEVbPB/sKzdXUImWW/ngKe | admin
+(1 row)
+
+// reauth again
+// then test endpoint see if i can POST postcards now
+// should work
+This action adds a new postcard
+```

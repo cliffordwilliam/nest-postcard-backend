@@ -59,6 +59,7 @@ export class AuthenticationService {
       {
         sub: user.id,
         username: user.username,
+        role: user.role,
       } as ActiveUserData,
       {
         audience: this.jwtConfiguration.audience,
